@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Meridian Capital — Portfolio Analytics"
+version = "1.0.0"
+id = "artifacts/meridian-dashboard"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18149
+
+[services.development]
+run = "pnpm --filter @workspace/meridian-dashboard run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/meridian-dashboard", "run", "build" ]
+publicDir = "artifacts/meridian-dashboard/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18149"
+BASE_PATH = "/"

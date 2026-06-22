@@ -1,0 +1,923 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: Meridian Capital Portfolio Analytics API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: portfolio
+    description: Portfolio summary and positions
+  - name: performance
+    description: NAV and performance time series
+  - name: risk
+    description: Risk metrics (VaR, drawdown, correlations)
+  - name: attribution
+    description: Brinson performance attribution
+  - name: allocation
+    description: Asset and sector allocation
+  - name: layout
+    description: Dashboard layout persistence
+  - name: theme
+    description: Theme configuration
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  # ── Portfolio Summary (W01) ─────────────────────────────────────────
+  /portfolio/summary:
+    get:
+      operationId: getPortfolioSummary
+      tags: [portfolio]
+      summary: Portfolio-level KPIs — AUM, NAV, P&L, Sharpe, etc.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortfolioSummary"
+
+  # ── Holdings / Positions Table (W02) ────────────────────────────────
+  /portfolio/holdings:
+    get:
+      operationId: getHoldings
+      tags: [portfolio]
+      summary: Current holdings with weights, P&L, and sector tags
+      parameters:
+        - name: assetClass
+          in: query
+          schema:
+            type: string
+        - name: sector
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Holding"
+
+  # ── NAV Performance Chart (W03) ─────────────────────────────────────
+  /performance/nav:
+    get:
+      operationId: getNavSeries
+      tags: [performance]
+      summary: NAV time series for performance charting
+      parameters:
+        - name: period
+          in: query
+          description: "1M | 3M | 6M | 1Y | 3Y | 5Y | YTD"
+          schema:
+            type: string
+            default: "1Y"
+        - name: benchmark
+          in: query
+          description: "NIFTY50 | SP500 | MSCI_WORLD"
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NavSeriesResponse"
+
+  # ── Sector & Asset-Class Allocation (W04) ───────────────────────────
+  /allocation/sectors:
+    get:
+      operationId: getSectorAllocation
+      tags: [allocation]
+      summary: Portfolio weights by sector and asset class
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AllocationSlice"
+
+  /allocation/asset-classes:
+    get:
+      operationId: getAssetClassAllocation
+      tags: [allocation]
+      summary: Portfolio weights by asset class
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AllocationSlice"
+
+  # ── Risk Metrics Summary (W05) ──────────────────────────────────────
+  /risk/metrics:
+    get:
+      operationId: getRiskMetrics
+      tags: [risk]
+      summary: Aggregate risk KPIs — Sharpe, Sortino, Beta, Tracking Error, etc.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RiskMetrics"
+
+  # ── Value at Risk Gauge (W06) ────────────────────────────────────────
+  /risk/var:
+    get:
+      operationId: getValueAtRisk
+      tags: [risk]
+      summary: VaR and CVaR at multiple confidence levels and horizons
+      parameters:
+        - name: confidence
+          in: query
+          description: "0.90 | 0.95 | 0.99"
+          schema:
+            type: string
+            default: "0.95"
+        - name: horizon
+          in: query
+          description: "1D | 5D | 10D | 1M"
+          schema:
+            type: string
+            default: "1D"
+        - name: method
+          in: query
+          description: "historical | parametric"
+          schema:
+            type: string
+            default: "historical"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaRResult"
+
+  # ── Drawdown Analysis (W07) ─────────────────────────────────────────
+  /risk/drawdown:
+    get:
+      operationId: getDrawdownSeries
+      tags: [risk]
+      summary: Drawdown time series with peak/trough annotations
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            default: "3Y"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DrawdownResponse"
+
+  # ── Correlation Matrix (W08) ────────────────────────────────────────
+  /risk/correlation:
+    get:
+      operationId: getCorrelationMatrix
+      tags: [risk]
+      summary: Pairwise correlation matrix for top holdings
+      parameters:
+        - name: lookback
+          in: query
+          description: "30 | 60 | 90 | 252"
+          schema:
+            type: integer
+            default: 90
+        - name: limit
+          in: query
+          description: Max number of assets to include
+          schema:
+            type: integer
+            default: 10
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CorrelationMatrixResponse"
+
+  # ── Brinson Attribution (W09) ───────────────────────────────────────
+  /attribution/brinson:
+    get:
+      operationId: getBrinsonAttribution
+      tags: [attribution]
+      summary: Brinson allocation/selection/interaction attribution by sector
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            default: "1Y"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrinsonResponse"
+
+  # ── Factor Exposure (W10) ───────────────────────────────────────────
+  /risk/factors:
+    get:
+      operationId: getFactorExposures
+      tags: [risk]
+      summary: Portfolio exposure to Fama-French-style factors
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FactorExposure"
+
+  # ── Stress Test Scenarios (W11) ─────────────────────────────────────
+  /risk/stress-tests:
+    get:
+      operationId: getStressTests
+      tags: [risk]
+      summary: Simulated P&L impact under historical and hypothetical stress scenarios
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StressScenario"
+
+  # ── Recent Activity / Alert Feed (W12) ──────────────────────────────
+  /portfolio/activity:
+    get:
+      operationId: getActivityFeed
+      tags: [portfolio]
+      summary: Recent trades, alerts, and threshold breaches
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityItem"
+
+  # ── Dashboard Layout Persistence ─────────────────────────────────────
+  /layout:
+    get:
+      operationId: getLayout
+      tags: [layout]
+      summary: Retrieve persisted dashboard layout
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardLayout"
+    put:
+      operationId: saveLayout
+      tags: [layout]
+      summary: Persist dashboard layout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DashboardLayoutInput"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardLayout"
+
+  # ── Theme Configuration ───────────────────────────────────────────────
+  /theme:
+    get:
+      operationId: getTheme
+      tags: [theme]
+      summary: Current active theme configuration
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThemeConfig"
+    put:
+      operationId: saveTheme
+      tags: [theme]
+      summary: Persist theme selection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ThemeInput"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThemeConfig"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+
+    # ── Portfolio Summary ──────────────────────────────────────────────
+    PortfolioSummary:
+      type: object
+      required:
+        - aum
+        - aumChange1D
+        - aumChangePct1D
+        - nav
+        - navChange1D
+        - navChangePct1D
+        - totalReturn
+        - ytdReturn
+        - sharpeRatio
+        - sortinoRatio
+        - beta
+        - alpha
+        - maxDrawdown
+        - volatility
+        - cashWeight
+        - investedWeight
+        - lastUpdated
+        - isStale
+      properties:
+        aum:
+          type: number
+          description: Total AUM in USD billions
+        aumChange1D:
+          type: number
+        aumChangePct1D:
+          type: number
+        nav:
+          type: number
+          description: NAV per unit
+        navChange1D:
+          type: number
+        navChangePct1D:
+          type: number
+        totalReturn:
+          type: number
+          description: Inception-to-date return %
+        ytdReturn:
+          type: number
+        sharpeRatio:
+          type: number
+        sortinoRatio:
+          type: number
+        beta:
+          type: number
+        alpha:
+          type: number
+          description: Jensen's alpha annualised %
+        maxDrawdown:
+          type: number
+          description: Maximum drawdown %
+        volatility:
+          type: number
+          description: Annualised volatility %
+        cashWeight:
+          type: number
+        investedWeight:
+          type: number
+        lastUpdated:
+          type: string
+          format: date-time
+        isStale:
+          type: boolean
+
+    Holding:
+      type: object
+      required:
+        - ticker
+        - name
+        - assetClass
+        - sector
+        - weight
+        - marketValue
+        - quantity
+        - avgCost
+        - currentPrice
+        - dayReturn
+        - dayReturnPct
+        - totalReturn
+        - totalReturnPct
+        - beta
+        - isStale
+      properties:
+        ticker:
+          type: string
+        name:
+          type: string
+        assetClass:
+          type: string
+        sector:
+          type: string
+        weight:
+          type: number
+        marketValue:
+          type: number
+        quantity:
+          type: number
+        avgCost:
+          type: number
+        currentPrice:
+          type: number
+        dayReturn:
+          type: number
+        dayReturnPct:
+          type: number
+        totalReturn:
+          type: number
+        totalReturnPct:
+          type: number
+        beta:
+          type: number
+        isStale:
+          type: boolean
+
+    # ── NAV Performance ──────────────────────────────────────────────
+    NavDataPoint:
+      type: object
+      required: [date, portfolioNav, benchmarkNav, portfolioReturn, benchmarkReturn]
+      properties:
+        date:
+          type: string
+          format: date
+        portfolioNav:
+          type: number
+        benchmarkNav:
+          type: number
+        portfolioReturn:
+          type: number
+          description: Cumulative return % from period start
+        benchmarkReturn:
+          type: number
+
+    NavSeriesResponse:
+      type: object
+      required: [period, benchmark, series, lastUpdated, isStale]
+      properties:
+        period:
+          type: string
+        benchmark:
+          type: string
+        series:
+          type: array
+          items:
+            $ref: "#/components/schemas/NavDataPoint"
+        lastUpdated:
+          type: string
+          format: date-time
+        isStale:
+          type: boolean
+
+    # ── Allocation ────────────────────────────────────────────────────
+    AllocationSlice:
+      type: object
+      required: [name, weight, benchmarkWeight, activeWeight, return1Y]
+      properties:
+        name:
+          type: string
+        weight:
+          type: number
+        benchmarkWeight:
+          type: number
+        activeWeight:
+          type: number
+        return1Y:
+          type: number
+
+    # ── Risk Metrics ──────────────────────────────────────────────────
+    RiskMetrics:
+      type: object
+      required:
+        - sharpeRatio
+        - sortinoRatio
+        - calmarRatio
+        - beta
+        - alpha
+        - rsquared
+        - trackingError
+        - informationRatio
+        - volatility30D
+        - volatility90D
+        - volatilityAnnual
+        - correlationToBenchmark
+        - lastUpdated
+        - isStale
+      properties:
+        sharpeRatio:
+          type: number
+        sortinoRatio:
+          type: number
+        calmarRatio:
+          type: number
+        beta:
+          type: number
+        alpha:
+          type: number
+        rsquared:
+          type: number
+        trackingError:
+          type: number
+        informationRatio:
+          type: number
+        volatility30D:
+          type: number
+        volatility90D:
+          type: number
+        volatilityAnnual:
+          type: number
+        correlationToBenchmark:
+          type: number
+        lastUpdated:
+          type: string
+          format: date-time
+        isStale:
+          type: boolean
+
+    VaRResult:
+      type: object
+      required:
+        - var95
+        - var99
+        - cvar95
+        - cvar99
+        - varPct95
+        - varPct99
+        - method
+        - horizon
+        - confidence
+        - returnDistribution
+        - lastUpdated
+        - isStale
+      properties:
+        var95:
+          type: number
+          description: VaR at 95% confidence in USD millions
+        var99:
+          type: number
+        cvar95:
+          type: number
+          description: CVaR/Expected Shortfall at 95% in USD millions
+        cvar99:
+          type: number
+        varPct95:
+          type: number
+          description: VaR as % of AUM
+        varPct99:
+          type: number
+        method:
+          type: string
+        horizon:
+          type: string
+        confidence:
+          type: number
+        returnDistribution:
+          type: array
+          items:
+            type: number
+          description: Array of simulated daily returns for histogram
+        lastUpdated:
+          type: string
+          format: date-time
+        isStale:
+          type: boolean
+
+    # ── Drawdown ──────────────────────────────────────────────────────
+    DrawdownDataPoint:
+      type: object
+      required: [date, drawdown, portfolioValue]
+      properties:
+        date:
+          type: string
+          format: date
+        drawdown:
+          type: number
+          description: Drawdown % (negative number, 0 at peaks)
+        portfolioValue:
+          type: number
+
+    DrawdownEvent:
+      type: object
+      required: [peakDate, troughDate, recoveryDate, maxDrawdown, durationDays, recoveryDays]
+      properties:
+        peakDate:
+          type: string
+          format: date
+        troughDate:
+          type: string
+          format: date
+        recoveryDate:
+          type: ["string", "null"]
+          format: date
+        maxDrawdown:
+          type: number
+        durationDays:
+          type: integer
+        recoveryDays:
+          type: ["integer", "null"]
+
+    DrawdownResponse:
+      type: object
+      required: [period, series, events, currentDrawdown, maxDrawdown, lastUpdated, isStale]
+      properties:
+        period:
+          type: string
+        series:
+          type: array
+          items:
+            $ref: "#/components/schemas/DrawdownDataPoint"
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/DrawdownEvent"
+        currentDrawdown:
+          type: number
+        maxDrawdown:
+          type: number
+        lastUpdated:
+          type: string
+          format: date-time
+        isStale:
+          type: boolean
+
+    # ── Correlation Matrix ────────────────────────────────────────────
+    CorrelationMatrixResponse:
+      type: object
+      required: [assets, matrix, lookbackDays, lastUpdated, isStale]
+      properties:
+        assets:
+          type: array
+          items:
+            type: string
+        matrix:
+          type: array
+          description: Row-major 2D correlation matrix (array of arrays)
+          items:
+            type: array
+            items:
+              type: number
+        lookbackDays:
+          type: integer
+        lastUpdated:
+          type: string
+          format: date-time
+        isStale:
+          type: boolean
+
+    # ── Brinson Attribution ───────────────────────────────────────────
+    BrinsonSector:
+      type: object
+      required:
+        - sector
+        - portfolioWeight
+        - benchmarkWeight
+        - portfolioReturn
+        - benchmarkReturn
+        - allocationEffect
+        - selectionEffect
+        - interactionEffect
+        - totalActiveReturn
+      properties:
+        sector:
+          type: string
+        portfolioWeight:
+          type: number
+        benchmarkWeight:
+          type: number
+        portfolioReturn:
+          type: number
+        benchmarkReturn:
+          type: number
+        allocationEffect:
+          type: number
+        selectionEffect:
+          type: number
+        interactionEffect:
+          type: number
+        totalActiveReturn:
+          type: number
+
+    BrinsonResponse:
+      type: object
+      required:
+        - period
+        - sectors
+        - totalAllocationEffect
+        - totalSelectionEffect
+        - totalInteractionEffect
+        - totalActiveReturn
+        - lastUpdated
+        - isStale
+      properties:
+        period:
+          type: string
+        sectors:
+          type: array
+          items:
+            $ref: "#/components/schemas/BrinsonSector"
+        totalAllocationEffect:
+          type: number
+        totalSelectionEffect:
+          type: number
+        totalInteractionEffect:
+          type: number
+        totalActiveReturn:
+          type: number
+        lastUpdated:
+          type: string
+          format: date-time
+        isStale:
+          type: boolean
+
+    # ── Factor Exposures ──────────────────────────────────────────────
+    FactorExposure:
+      type: object
+      required: [factor, exposure, tstat, contribution]
+      properties:
+        factor:
+          type: string
+          description: "Market | SMB | HML | MOM | QMJ | BAB"
+        exposure:
+          type: number
+          description: Factor beta / loading
+        tstat:
+          type: number
+        contribution:
+          type: number
+          description: Contribution to portfolio return in %
+
+    # ── Stress Tests ──────────────────────────────────────────────────
+    StressScenario:
+      type: object
+      required: [name, category, estimatedLoss, estimatedLossPct, description]
+      properties:
+        name:
+          type: string
+        category:
+          type: string
+          description: "historical | hypothetical"
+        estimatedLoss:
+          type: number
+          description: Estimated P&L in USD millions
+        estimatedLossPct:
+          type: number
+        description:
+          type: string
+
+    # ── Activity Feed ─────────────────────────────────────────────────
+    ActivityItem:
+      type: object
+      required: [id, type, message, timestamp, severity]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          description: "TRADE | ALERT | THRESHOLD | REBALANCE | COMPLIANCE"
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        severity:
+          type: string
+          description: "info | warning | critical"
+        ticker:
+          type: ["string", "null"]
+        value:
+          type: ["number", "null"]
+
+    # ── Dashboard Layout ──────────────────────────────────────────────
+    WidgetConfig:
+      type: object
+      required: [id, type, x, y, w, h, settings]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          description: "PORTFOLIO_SUMMARY | NAV_CHART | VAR_GAUGE | DRAWDOWN | CORRELATION | ATTRIBUTION | HOLDINGS | ALLOCATION | RISK_METRICS | FACTORS | STRESS_TEST | ACTIVITY"
+        x:
+          type: integer
+        y:
+          type: integer
+        w:
+          type: integer
+        h:
+          type: integer
+        settings:
+          type: object
+          description: Widget-specific settings (arbitrary JSON)
+
+    DashboardLayout:
+      type: object
+      required: [id, name, widgets, columns, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        widgets:
+          type: array
+          items:
+            $ref: "#/components/schemas/WidgetConfig"
+        columns:
+          type: integer
+          description: "Number of grid columns (12 | 16 | 24)"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    DashboardLayoutInput:
+      type: object
+      required: [name, widgets, columns]
+      properties:
+        name:
+          type: string
+        widgets:
+          type: array
+          items:
+            $ref: "#/components/schemas/WidgetConfig"
+        columns:
+          type: integer
+
+    # ── Theme ─────────────────────────────────────────────────────────
+    ThemeConfig:
+      type: object
+      required: [id, name, preset]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        preset:
+          type: string
+          description: "bloomberg | refinitiv | midnight | arctic | meridian"
+
+    ThemeInput:
+      type: object
+      required: [preset]
+      properties:
+        preset:
+          type: string
