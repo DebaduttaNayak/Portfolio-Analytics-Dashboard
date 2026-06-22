@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://portfolio-analytics-dashboard-pdyj.onrender.com/api/$1"
+    }
+  ]
+}
